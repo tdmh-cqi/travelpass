@@ -1,0 +1,400 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  PlusCircle, 
+  CheckCircle, 
+  User, 
+  MapPin, 
+  Truck, 
+  Clock, 
+  ChevronRight,
+  X,
+  ShieldCheck,
+  Lock,
+  Search,
+  SearchCheck,
+  RefreshCw,
+  Gauge,
+  Bed,
+  Calendar
+} from 'lucide-react';
+
+// YOUR SPECIFIC DEPLOYED URL
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykbXQNrncHUKpbLQP_wX1p7u7iFLKqTI4J3h_PS1soZtS4gh6qj1HOvOjdPrbgK_c0QA/exec";
+
+const App = () => {
+  const [view, setView] = useState('landing'); 
+  const [activeTab, setActiveTab] = useState('pending');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingRole, setPendingRole] = useState(null);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [searchId, setSearchId] = useState('');
+  const [trackResult, setTrackResult] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [requests, setRequests] = useState([]);
+
+  const CREDENTIALS = {
+    'admin-dashboard': 'admin123',
+    'security-post': 'sec123'
+  };
+
+  const [formData, setFormData] = useState({
+    staffName: '',
+    department: '',
+    purpose: '',
+    destination: '',
+    isAmbulance: false,
+    patientName: '',
+    roomNumber: '',
+    departureDate: new Date().toISOString().split('T')[0],
+    departureTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  });
+
+  const syncData = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}`);
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setRequests(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      }
+    } catch (e) {
+      console.warn("Sync failed, retrying...");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    syncData();
+    const interval = setInterval(syncData, 30000); // Auto-refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleAction = async (action, payload) => {
+    let updatedPayload = { ...payload };
+    if (action === 'create') {
+        updatedPayload = { 
+            ...payload, 
+            status: 'pending', 
+            createdAt: new Date().toISOString(),
+            isAmbulance: payload.isAmbulance ? "Yes" : "No" 
+        };
+        // Optimistic UI update
+        setRequests(prev => [updatedPayload, ...prev]);
+        setView('success');
+        setTrackResult(updatedPayload);
+    } else {
+        // Optimistic UI update for edits
+        setRequests(prev => prev.map(r => r.id === payload.id ? { ...r, ...payload } : r));
+    }
+
+    // Post Relay via Hidden Iframe (Bypasses CORS for Google Apps Script)
+    const iframeId = 'post-relay-' + Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.name = iframeId;
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.action = SCRIPT_URL;
+    form.method = 'POST';
+    form.target = iframeId;
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify({ action, ...updatedPayload });
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+
+    setTimeout(() => {
+        form.remove();
+        iframe.remove();
+        syncData();
+    }, 2000);
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (password === CREDENTIALS[pendingRole]) {
+      setIsAuthenticated(true);
+      setView(pendingRole);
+      setShowAuthModal(false);
+      setPassword('');
+      setAuthError('');
+    } else {
+      setAuthError('Incorrect passcode');
+    }
+  };
+
+  const renderStatusBadge = (status) => {
+    const colors = {
+      pending: 'bg-amber-100 text-amber-700',
+      approved: 'bg-emerald-100 text-emerald-700',
+      completed: 'bg-slate-100 text-slate-700'
+    };
+    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${colors[status] || colors.pending}`}>{status}</span>;
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-24">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('landing')}>
+          <div className="bg-blue-600 p-2 rounded-xl shadow-lg">
+            <Truck size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="font-extrabold text-base leading-none tracking-tight">TDMH</h1>
+            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Digital Travel Pass</p>
+          </div>
+        </div>
+        <button onClick={syncData} className={`p-2 rounded-full transition-all ${isSyncing ? 'animate-spin text-blue-600' : 'text-slate-400'}`}>
+          <RefreshCw size={20} />
+        </button>
+      </header>
+
+      <main className="max-w-md mx-auto p-5">
+        {view === 'landing' && (
+          <div className="space-y-6 animate-in pt-4">
+             <div className="px-2">
+                <h2 className="text-3xl font-extrabold text-slate-900 leading-tight">Smart Logistics<br/><span className="text-blue-600">for TDMH</span></h2>
+                <p className="text-slate-400 text-sm mt-1 font-medium">Hospital Vehicle Dispatch System</p>
+            </div>
+            <div className="grid gap-3">
+              <RoleCard icon={<PlusCircle className="text-blue-600" />} title="Request Vehicle" desc="Apply for a new trip ticket" onClick={() => setView('staff-form')} />
+              <RoleCard icon={<SearchCheck className="text-emerald-600" />} title="Track Status" desc="Check approval or odometer info" onClick={() => setView('track-request')} />
+              <div className="pt-4 border-t border-slate-200 mt-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-2">Authorized Access</p>
+                <div className="grid gap-3">
+                    <RoleCard icon={<ShieldCheck className="text-purple-600" />} title="Admin Dispatch" desc="Approvals & Fleet Assignment" onClick={() => { setPendingRole('admin-dashboard'); setShowAuthModal(true); }} isLocked />
+                    <RoleCard icon={<Gauge className="text-orange-600" />} title="Security Gate" desc="Odometer Reading & Logs" onClick={() => { setPendingRole('security-post'); setShowAuthModal(true); }} isLocked />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'staff-form' && (
+          <div className="space-y-6 animate-in">
+             <button onClick={() => setView('landing')} className="text-xs font-bold text-slate-400 flex items-center gap-1">← BACK</button>
+             <h2 className="text-xl font-bold">New Trip Request</h2>
+             <form onSubmit={(e) => {
+               e.preventDefault();
+               handleAction('create', {
+                 id: 'TP-' + Math.floor(1000 + Math.random() * 9000),
+                 ...formData
+               });
+             }} className="space-y-4">
+               <div className="bg-white p-6 rounded-3xl border shadow-sm space-y-4">
+                 <Input label="Staff Name / Unit" value={formData.staffName} onChange={(v) => setFormData({...formData, staffName: v})} required />
+                 <Input label="Department" value={formData.department} onChange={(v) => setFormData({...formData, department: v})} required />
+                 
+                 <div className="grid grid-cols-2 gap-3">
+                    <Input label="Departure Date" type="date" value={formData.departureDate} onChange={(v) => setFormData({...formData, departureDate: v})} required />
+                    <Input label="Departure Time" type="time" value={formData.departureTime} onChange={(v) => setFormData({...formData, departureTime: v})} required />
+                 </div>
+
+                 <div className="pt-2 pb-2 border-y border-slate-50">
+                    <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl mb-3">
+                        <input type="checkbox" checked={formData.isAmbulance} onChange={(e) => setFormData({...formData, isAmbulance: e.target.checked})} className="w-5 h-5 accent-red-600" />
+                        <span className="text-xs font-bold text-red-700">Patient/Ambulance Transfer?</span>
+                    </div>
+                    {formData.isAmbulance && (
+                        <div className="grid grid-cols-2 gap-3 animate-in">
+                            <Input label="Patient Name" value={formData.patientName} onChange={(v) => setFormData({...formData, patientName: v})} placeholder="Full Name" />
+                            <Input label="Room Number" value={formData.roomNumber} onChange={(v) => setFormData({...formData, roomNumber: v})} placeholder="e.g. 302-A" />
+                        </div>
+                    )}
+                 </div>
+
+                 <Input label="Destination" value={formData.destination} onChange={(v) => setFormData({...formData, destination: v})} required />
+                 <textarea 
+                   placeholder="Purpose of Trip"
+                   required
+                   className="w-full p-4 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none h-24 text-sm"
+                   value={formData.purpose}
+                   onChange={(e) => setFormData({...formData, purpose: e.target.value})}
+                 ></textarea>
+               </div>
+               <button type="submit" className="w-full bg-blue-600 text-white font-bold py-5 rounded-3xl shadow-xl active:scale-95 transition-all">Submit Request</button>
+             </form>
+          </div>
+        )}
+
+        {isAuthenticated && (view === 'admin-dashboard' || view === 'security-post') && (
+            <div className="space-y-6 animate-in">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold uppercase text-blue-600">{view.replace('-', ' ')}</h2>
+                    <button onClick={() => {setIsAuthenticated(false); setView('landing');}} className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1 rounded-lg">LOGOUT</button>
+                </div>
+                <div className="flex p-1 bg-slate-200 rounded-2xl">
+                    {['pending', 'approved', 'completed'].map(t => (
+                        <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-xl ${activeTab === t ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>{t}</button>
+                    ))}
+                </div>
+                <div className="space-y-4">
+                    {requests.filter(r => r.status === activeTab).map(req => (
+                        <div key={req.id} className="bg-white p-5 rounded-3xl border shadow-sm space-y-4">
+                            <div className="flex justify-between items-start">
+                                <span className="text-[10px] font-mono text-slate-400 font-bold">{req.id}</span>
+                                <div className="flex flex-col items-end gap-1">
+                                    {renderStatusBadge(req.status)}
+                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1"><Clock size={10}/> {req.departureTime} | {req.departureDate}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-slate-800">{req.staffName}</h4>
+                                <p className="text-xs text-slate-500 flex items-center gap-1 mt-1"><MapPin size={12}/> {req.destination}</p>
+                                {req.patientName && (
+                                    <div className="mt-2 flex gap-4 text-[10px] bg-blue-50 text-blue-700 px-3 py-2 rounded-xl">
+                                        <p className="flex items-center gap-1 font-bold"><User size={10}/> {req.patientName}</p>
+                                        <p className="flex items-center gap-1 font-bold"><Bed size={10}/> RM {req.roomNumber || 'N/A'}</p>
+                                    </div>
+                                )}
+                            </div>
+                            {view === 'admin-dashboard' && activeTab === 'pending' && (
+                                <div className="pt-3 border-t grid gap-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input id={`v-${req.id}`} placeholder="Vehicle #" className="text-xs p-3 bg-slate-50 rounded-xl border focus:border-blue-500 outline-none" />
+                                        <input id={`d-${req.id}`} placeholder="Driver" className="text-xs p-3 bg-slate-50 rounded-xl border focus:border-blue-500 outline-none" />
+                                    </div>
+                                    <button onClick={() => handleAction('update', {
+                                        id: req.id, 
+                                        status: 'approved',
+                                        vehicleAssigned: document.getElementById(`v-${req.id}`).value,
+                                        driverName: document.getElementById(`d-${req.id}`).value
+                                    })} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl text-xs">Approve Ticket</button>
+                                </div>
+                            )}
+                            {view === 'security-post' && activeTab === 'approved' && (
+                                <div className="pt-3 border-t grid gap-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input id={`s-${req.id}`} type="number" placeholder="In ODO" className="text-xs p-3 bg-slate-50 rounded-xl border outline-none" />
+                                        <input id={`e-${req.id}`} type="number" placeholder="Out ODO" className="text-xs p-3 bg-slate-50 rounded-xl border outline-none" />
+                                    </div>
+                                    <button onClick={() => {
+                                        const s = document.getElementById(`s-${req.id}`).value;
+                                        const e = document.getElementById(`e-${req.id}`).value;
+                                        handleAction('update', {
+                                            id: req.id, 
+                                            status: 'completed',
+                                            startOdo: s,
+                                            endOdo: e,
+                                            distance: (e - s) || 0
+                                        });
+                                    }} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-xs">Close Trip</button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {view === 'track-request' && (
+            <div className="space-y-6 animate-in">
+                 <button onClick={() => setView('landing')} className="text-xs font-bold text-slate-400">← BACK</button>
+                 <h2 className="text-xl font-bold">Track Your Ticket</h2>
+                 <div className="flex gap-2">
+                    <input 
+                        placeholder="TP-XXXX" 
+                        value={searchId}
+                        onChange={(e) => setSearchId(e.target.value.toUpperCase())}
+                        className="flex-1 p-4 bg-white border rounded-2xl font-mono focus:border-blue-500 outline-none shadow-sm" 
+                    />
+                    <button 
+                        onClick={() => {
+                            const result = requests.find(r => r.id === searchId);
+                            setTrackResult(result || 'none');
+                        }}
+                        className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition-transform"
+                    >
+                        <Search size={24} />
+                    </button>
+                 </div>
+                 {trackResult === 'none' && <div className="text-center p-8 bg-orange-50 rounded-3xl text-orange-700 font-bold text-sm">Ticket not found</div>}
+                 {trackResult && trackResult !== 'none' && (
+                     <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50 space-y-4 animate-in">
+                        <div className="flex justify-between items-center">
+                            <span className="text-blue-600 font-mono font-bold text-lg">{trackResult.id}</span>
+                            {renderStatusBadge(trackResult.status)}
+                        </div>
+                        <h3 className="text-xl font-bold">{trackResult.staffName}</h3>
+                        <div className="space-y-3 text-sm text-slate-500">
+                            <p className="flex justify-between border-b pb-2"><span>Schedule:</span> <b className="text-slate-900">{trackResult.departureDate} @ {trackResult.departureTime}</b></p>
+                            {trackResult.patientName && <p className="flex justify-between border-b pb-2 text-blue-600"><span>Patient/Room:</span> <b>{trackResult.patientName} (RM {trackResult.roomNumber})</b></p>}
+                            <p className="flex justify-between border-b pb-2"><span>Vehicle:</span> <b className="text-slate-900">{trackResult.vehicleAssigned || trackResult.vehicle || 'Pending Assignment'}</b></p>
+                            <p className="flex justify-between border-b pb-2"><span>Driver:</span> <b className="text-slate-900">{trackResult.driverName || trackResult.driver || 'Pending Assignment'}</b></p>
+                            {trackResult.status === 'completed' && (
+                                <div className="bg-emerald-50 p-3 rounded-xl text-emerald-800 text-xs font-bold flex justify-between">
+                                    <span>Distance Traveled:</span>
+                                    <span>{trackResult.distance || 0} KM</span>
+                                </div>
+                            )}
+                        </div>
+                     </div>
+                 )}
+            </div>
+        )}
+
+        {view === 'success' && (
+            <div className="text-center py-20 animate-in">
+                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} /></div>
+                <h2 className="text-2xl font-bold mb-2">Request Sent</h2>
+                <p className="text-slate-400 text-sm mb-8 px-10">Your ID: <b className="text-blue-600">{trackResult?.id}</b>. Save this to track status.</p>
+                <button onClick={() => setView('landing')} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-sm">Return Home</button>
+            </div>
+        )}
+      </main>
+
+      {showAuthModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+              <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in">
+                  <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-500 transition-colors"><X size={24}/></button>
+                  <div className="p-3 bg-slate-100 rounded-2xl w-fit mb-4"><Lock size={20} /></div>
+                  <h3 className="text-xl font-bold mb-6">Staff Access</h3>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                      <input 
+                        autoFocus type="password" placeholder="Passcode" 
+                        className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center font-bold focus:border-blue-500 outline-none" 
+                        value={password} onChange={(e) => setPassword(e.target.value)}
+                      />
+                      {authError && <p className="text-center text-xs font-bold text-red-500">{authError}</p>}
+                      <button className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-colors">Login</button>
+                  </form>
+              </div>
+          </div>
+      )}
+    </div>
+  );
+};
+
+const RoleCard = ({ icon, title, desc, onClick, isLocked }) => (
+    <button onClick={onClick} className="w-full p-5 bg-white rounded-3xl border shadow-sm flex items-center justify-between group active:scale-[0.98] transition-all">
+        <div className="flex items-center gap-4 text-left">
+            <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-blue-50 transition-colors">{icon}</div>
+            <div>
+                <h3 className="font-bold flex items-center gap-1.5">{title} {isLocked && <Lock size={12} className="text-slate-300" />}</h3>
+                <p className="text-[11px] font-medium text-slate-400">{desc}</p>
+            </div>
+        </div>
+        <ChevronRight size={18} className="text-slate-200 group-hover:text-blue-400 transition-colors" />
+    </button>
+);
+
+const Input = ({ label, value, onChange, type = "text", ...props }) => (
+    <div className="space-y-1">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+        <input 
+            type={type} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-xl outline-none text-sm transition-all" 
+            value={value} onChange={(e) => onChange(e.target.value)} {...props} 
+        />
+    </div>
+);
+
+export default App;
