@@ -1,400 +1,317 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  PlusCircle, 
-  CheckCircle, 
-  User, 
-  MapPin, 
-  Truck, 
-  Clock, 
-  ChevronRight,
-  X,
-  ShieldCheck,
-  Lock,
-  Search,
-  SearchCheck,
-  RefreshCw,
-  Gauge,
-  Bed,
-  Calendar
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TDMH Travel Ticket System</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel for Browser Execution -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
 
-// YOUR SPECIFIC DEPLOYED URL
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykbXQNrncHUKpbLQP_wX1p7u7iFLKqTI4J3h_PS1soZtS4gh6qj1HOvOjdPrbgK_c0QA/exec";
+    <!-- Firebase SDK Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-const App = () => {
-  const [view, setView] = useState('landing'); 
-  const [activeTab, setActiveTab] = useState('pending');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [pendingRole, setPendingRole] = useState(null);
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [searchId, setSearchId] = useState('');
-  const [trackResult, setTrackResult] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [requests, setRequests] = useState([]);
+        // Global configuration access
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
 
-  const CREDENTIALS = {
-    'admin-dashboard': 'admin123',
-    'security-post': 'sec123'
-  };
-
-  const [formData, setFormData] = useState({
-    staffName: '',
-    department: '',
-    purpose: '',
-    destination: '',
-    isAmbulance: false,
-    patientName: '',
-    roomNumber: '',
-    departureDate: new Date().toISOString().split('T')[0],
-    departureTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-  });
-
-  const syncData = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    try {
-      const response = await fetch(`${SCRIPT_URL}?action=read&t=${Date.now()}`);
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setRequests(data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      }
-    } catch (e) {
-      console.warn("Sync failed, retrying...");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    syncData();
-    const interval = setInterval(syncData, 30000); // Auto-refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleAction = async (action, payload) => {
-    let updatedPayload = { ...payload };
-    if (action === 'create') {
-        updatedPayload = { 
-            ...payload, 
-            status: 'pending', 
-            createdAt: new Date().toISOString(),
-            isAmbulance: payload.isAmbulance ? "Yes" : "No" 
+        // Attach to window for React access
+        window.db = db;
+        window.auth = auth;
+        window.fbActions = { 
+            collection, doc, addDoc, updateDoc, onSnapshot, query, orderBy, 
+            signInAnonymously, signInWithCustomToken, onAuthStateChanged 
         };
-        // Optimistic UI update
-        setRequests(prev => [updatedPayload, ...prev]);
-        setView('success');
-        setTrackResult(updatedPayload);
-    } else {
-        // Optimistic UI update for edits
-        setRequests(prev => prev.map(r => r.id === payload.id ? { ...r, ...payload } : r));
-    }
 
-    // Post Relay via Hidden Iframe (Bypasses CORS for Google Apps Script)
-    const iframeId = 'post-relay-' + Date.now();
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.name = iframeId;
-    document.body.appendChild(iframe);
+        // RULE 3: Auth Before Queries
+        const initAuth = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                // Only signal ready after auth is successful
+                window.dispatchEvent(new Event('firebase-ready'));
+            } catch (error) {
+                console.error("Auth failed:", error);
+            }
+        };
 
-    const form = document.createElement('form');
-    form.action = SCRIPT_URL;
-    form.method = 'POST';
-    form.target = iframeId;
+        initAuth();
+    </script>
 
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'payload';
-    input.value = JSON.stringify({ action, ...updatedPayload });
-    form.appendChild(input);
+    <script type="text/babel">
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tdmh-travel-system';
+        const ADMIN_PASSWORD = "TDMH2024";
+        const { useState, useEffect } = React;
 
-    document.body.appendChild(form);
-    form.submit();
+        function App() {
+            const [view, setView] = useState('request');
+            const [user, setUser] = useState(null);
+            const [requests, setRequests] = useState([]);
+            const [isAuthorized, setIsAuthorized] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [message, setMessage] = useState(null);
+            const [isFirebaseReady, setIsFirebaseReady] = useState(false);
 
-    setTimeout(() => {
-        form.remove();
-        iframe.remove();
-        syncData();
-    }, 2000);
-  };
+            // Auth Listener
+            useEffect(() => {
+                const { auth, fbActions } = window;
+                if (!fbActions) return;
+                
+                const unsubscribe = fbActions.onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    if (u) setIsFirebaseReady(true);
+                });
+                return () => unsubscribe();
+            }, []);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (password === CREDENTIALS[pendingRole]) {
-      setIsAuthenticated(true);
-      setView(pendingRole);
-      setShowAuthModal(false);
-      setPassword('');
-      setAuthError('');
-    } else {
-      setAuthError('Incorrect passcode');
-    }
-  };
+            // Data Listener - Guarded by User Auth (RULE 3)
+            useEffect(() => {
+                if (!user || !isFirebaseReady) return;
+                
+                const { db, fbActions } = window;
+                // Path strictly follows RULE 1
+                const q = fbActions.query(
+                    fbActions.collection(db, 'artifacts', appId, 'public', 'data', 'tickets'), 
+                    fbActions.orderBy('createdAt', 'desc')
+                );
 
-  const renderStatusBadge = (status) => {
-    const colors = {
-      pending: 'bg-amber-100 text-amber-700',
-      approved: 'bg-emerald-100 text-emerald-700',
-      completed: 'bg-slate-100 text-slate-700'
-    };
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${colors[status] || colors.pending}`}>{status}</span>;
-  };
+                const unsubscribe = fbActions.onSnapshot(q, 
+                    (snapshot) => {
+                        setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                    },
+                    (error) => {
+                        console.error("Firestore error:", error);
+                    }
+                );
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-24">
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('landing')}>
-          <div className="bg-blue-600 p-2 rounded-xl shadow-lg">
-            <Truck size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="font-extrabold text-base leading-none tracking-tight">TDMH</h1>
-            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Digital Travel Pass</p>
-          </div>
-        </div>
-        <button onClick={syncData} className={`p-2 rounded-full transition-all ${isSyncing ? 'animate-spin text-blue-600' : 'text-slate-400'}`}>
-          <RefreshCw size={20} />
-        </button>
-      </header>
+                return () => unsubscribe();
+            }, [user, isFirebaseReady]);
 
-      <main className="max-w-md mx-auto p-5">
-        {view === 'landing' && (
-          <div className="space-y-6 animate-in pt-4">
-             <div className="px-2">
-                <h2 className="text-3xl font-extrabold text-slate-900 leading-tight">Smart Logistics<br/><span className="text-blue-600">for TDMH</span></h2>
-                <p className="text-slate-400 text-sm mt-1 font-medium">Hospital Vehicle Dispatch System</p>
-            </div>
-            <div className="grid gap-3">
-              <RoleCard icon={<PlusCircle className="text-blue-600" />} title="Request Vehicle" desc="Apply for a new trip ticket" onClick={() => setView('staff-form')} />
-              <RoleCard icon={<SearchCheck className="text-emerald-600" />} title="Track Status" desc="Check approval or odometer info" onClick={() => setView('track-request')} />
-              <div className="pt-4 border-t border-slate-200 mt-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-2">Authorized Access</p>
-                <div className="grid gap-3">
-                    <RoleCard icon={<ShieldCheck className="text-purple-600" />} title="Admin Dispatch" desc="Approvals & Fleet Assignment" onClick={() => { setPendingRole('admin-dashboard'); setShowAuthModal(true); }} isLocked />
-                    <RoleCard icon={<Gauge className="text-orange-600" />} title="Security Gate" desc="Odometer Reading & Logs" onClick={() => { setPendingRole('security-post'); setShowAuthModal(true); }} isLocked />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+            const showToast = (t) => { setMessage(t); setTimeout(() => setMessage(null), 3000); };
 
-        {view === 'staff-form' && (
-          <div className="space-y-6 animate-in">
-             <button onClick={() => setView('landing')} className="text-xs font-bold text-slate-400 flex items-center gap-1">← BACK</button>
-             <h2 className="text-xl font-bold">New Trip Request</h2>
-             <form onSubmit={(e) => {
-               e.preventDefault();
-               handleAction('create', {
-                 id: 'TP-' + Math.floor(1000 + Math.random() * 9000),
-                 ...formData
-               });
-             }} className="space-y-4">
-               <div className="bg-white p-6 rounded-3xl border shadow-sm space-y-4">
-                 <Input label="Staff Name / Unit" value={formData.staffName} onChange={(v) => setFormData({...formData, staffName: v})} required />
-                 <Input label="Department" value={formData.department} onChange={(v) => setFormData({...formData, department: v})} required />
-                 
-                 <div className="grid grid-cols-2 gap-3">
-                    <Input label="Departure Date" type="date" value={formData.departureDate} onChange={(v) => setFormData({...formData, departureDate: v})} required />
-                    <Input label="Departure Time" type="time" value={formData.departureTime} onChange={(v) => setFormData({...formData, departureTime: v})} required />
-                 </div>
+            const handleLogin = () => {
+                if (passwordInput === ADMIN_PASSWORD) { setIsAuthorized(true); setPasswordInput(''); }
+                else showToast("Incorrect Password");
+            };
 
-                 <div className="pt-2 pb-2 border-y border-slate-50">
-                    <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl mb-3">
-                        <input type="checkbox" checked={formData.isAmbulance} onChange={(e) => setFormData({...formData, isAmbulance: e.target.checked})} className="w-5 h-5 accent-red-600" />
-                        <span className="text-xs font-bold text-red-700">Patient/Ambulance Transfer?</span>
-                    </div>
-                    {formData.isAmbulance && (
-                        <div className="grid grid-cols-2 gap-3 animate-in">
-                            <Input label="Patient Name" value={formData.patientName} onChange={(v) => setFormData({...formData, patientName: v})} placeholder="Full Name" />
-                            <Input label="Room Number" value={formData.roomNumber} onChange={(v) => setFormData({...formData, roomNumber: v})} placeholder="e.g. 302-A" />
+            const downloadCSV = () => {
+                if (requests.length === 0) return showToast("No data to export");
+                const headers = ["Staff Name", "Department", "Date", "Time", "Purpose", "Type", "Status", "Driver", "Vehicle", "Odo Start", "Odo End", "Security", "Completed At"];
+                const rows = requests.map(r => [
+                    `"${r.staffName || ''}"`, `"${r.department || ''}"`, r.date || '', r.time || '', `"${r.purpose || ''}"`, r.transportType || '', r.status || '', `"${r.driver || ''}"`, `"${r.vehicle || ''}"`, r.odoStart || '', r.odoEnd || '', `"${r.securityName || ''}"`, r.completedAt || ''
+                ]);
+                const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.setAttribute("href", URL.createObjectURL(blob));
+                link.setAttribute("download", `TDMH_Report_${new Date().toLocaleDateString()}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const Nav = () => (
+                <nav className="bg-blue-900 text-white p-4 shadow-md sticky top-0 z-50">
+                    <div className="max-w-4xl mx-auto flex justify-between items-center">
+                        <div className="font-bold flex items-center gap-2">TDMH TRAVEL</div>
+                        <div className="flex gap-2 text-[10px] md:text-xs">
+                            <button onClick={() => setView('request')} className={`px-2 py-1 rounded ${view==='request'?'bg-blue-700':''}`}>Request</button>
+                            <button onClick={() => setView('track')} className={`px-2 py-1 rounded ${view==='track'?'bg-blue-700':''}`}>Track</button>
+                            <button onClick={() => {setView('admin'); setIsAuthorized(false)}} className={`px-2 py-1 rounded ${view==='admin'?'bg-blue-700':''}`}>Admin</button>
+                            <button onClick={() => {setView('security'); setIsAuthorized(false)}} className={`px-2 py-1 rounded ${view==='security'?'bg-blue-700':''}`}>Security</button>
                         </div>
-                    )}
-                 </div>
+                    </div>
+                </nav>
+            );
 
-                 <Input label="Destination" value={formData.destination} onChange={(v) => setFormData({...formData, destination: v})} required />
-                 <textarea 
-                   placeholder="Purpose of Trip"
-                   required
-                   className="w-full p-4 bg-slate-50 rounded-xl border-2 border-transparent focus:border-blue-500 outline-none h-24 text-sm"
-                   value={formData.purpose}
-                   onChange={(e) => setFormData({...formData, purpose: e.target.value})}
-                 ></textarea>
-               </div>
-               <button type="submit" className="w-full bg-blue-600 text-white font-bold py-5 rounded-3xl shadow-xl active:scale-95 transition-all">Submit Request</button>
-             </form>
-          </div>
-        )}
+            if (!user) {
+                return <div className="flex items-center justify-center min-h-screen text-blue-900 font-bold">Authenticating...</div>;
+            }
 
-        {isAuthenticated && (view === 'admin-dashboard' || view === 'security-post') && (
-            <div className="space-y-6 animate-in">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-bold uppercase text-blue-600">{view.replace('-', ' ')}</h2>
-                    <button onClick={() => {setIsAuthenticated(false); setView('landing');}} className="text-[10px] font-bold text-red-500 bg-red-50 px-3 py-1 rounded-lg">LOGOUT</button>
-                </div>
-                <div className="flex p-1 bg-slate-200 rounded-2xl">
-                    {['pending', 'approved', 'completed'].map(t => (
-                        <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-xl ${activeTab === t ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>{t}</button>
-                    ))}
-                </div>
-                <div className="space-y-4">
-                    {requests.filter(r => r.status === activeTab).map(req => (
-                        <div key={req.id} className="bg-white p-5 rounded-3xl border shadow-sm space-y-4">
-                            <div className="flex justify-between items-start">
-                                <span className="text-[10px] font-mono text-slate-400 font-bold">{req.id}</span>
-                                <div className="flex flex-col items-end gap-1">
-                                    {renderStatusBadge(req.status)}
-                                    <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1"><Clock size={10}/> {req.departureTime} | {req.departureDate}</span>
+            if (view === 'request') {
+                return (
+                    <div>
+                        <Nav />
+                        <div className="p-4 max-w-xl mx-auto mt-4">
+                            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                                <h2 className="text-xl font-bold text-blue-800 mb-6 text-center">Travel Ticket Request</h2>
+                                <form onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    const fd = new FormData(e.target);
+                                    const data = Object.fromEntries(fd.entries());
+                                    const { db, fbActions } = window;
+                                    await fbActions.addDoc(fbActions.collection(db, 'artifacts', appId, 'public', 'data', 'tickets'), {
+                                        ...data,
+                                        status: 'Pending',
+                                        createdAt: new Date().toISOString(),
+                                        userId: user.uid
+                                    });
+                                    showToast("Submitted Successfully");
+                                    e.target.reset();
+                                    setView('track');
+                                }} className="space-y-4">
+                                    <input name="staffName" placeholder="Staff Name" required className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    <input name="department" placeholder="Department" required className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input name="date" type="date" required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                        <input name="time" type="time" required className="border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                    </div>
+                                    <textarea name="purpose" placeholder="Purpose & Destination" required className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none h-24" />
+                                    <select name="transportType" className="w-full border p-2 rounded bg-white">
+                                        <option value="Staff">Staff Transport</option>
+                                        <option value="Patient">Patient Transport</option>
+                                    </select>
+                                    <button className="w-full bg-blue-700 text-white font-bold py-3 rounded-lg hover:bg-blue-800 transition shadow-md">Submit Request</button>
+                                </form>
+                            </div>
+                        </div>
+                        {message && <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-full z-50">{message}</div>}
+                    </div>
+                );
+            }
+
+            if ((view === 'admin' || view === 'security') && !isAuthorized) {
+                return (
+                    <div>
+                        <Nav />
+                        <div className="flex items-center justify-center mt-20 p-4">
+                            <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-sm text-center border border-gray-100">
+                                <h2 className="text-xl font-bold mb-4 uppercase tracking-wider text-blue-900">Restricted Access</h2>
+                                <input 
+                                    type="password" 
+                                    placeholder="Password" 
+                                    className="w-full border p-3 rounded mb-4 text-center focus:ring-2 focus:ring-blue-500 outline-none" 
+                                    value={passwordInput}
+                                    onChange={e => setPasswordInput(e.target.value)} 
+                                    onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                                />
+                                <button onClick={handleLogin} className="w-full bg-blue-800 text-white py-3 rounded font-bold hover:bg-black transition">Unlock Portal</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div>
+                    <Nav />
+                    <div className="p-4 max-w-2xl mx-auto">
+                        <div className="flex justify-between items-end mb-6">
+                            <div>
+                                <h2 className="text-xl font-black uppercase tracking-tighter text-blue-900">{view} Panel</h2>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Live System Feed</p>
+                            </div>
+                            {view === 'admin' && (
+                                <button onClick={downloadCSV} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 shadow hover:bg-green-700 transition">
+                                    Export CSV
+                                </button>
+                            )}
+                        </div>
+
+                        {view === 'admin' && (
+                            <div className="grid grid-cols-3 gap-2 mb-6">
+                                <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-center">
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Pending</div>
+                                    <div className="text-xl font-black text-yellow-600">{requests.filter(r => r.status === 'Pending').length}</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-center">
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Active</div>
+                                    <div className="text-xl font-black text-blue-600">{requests.filter(r => r.status === 'Approved' || r.status === 'On Travel').length}</div>
+                                </div>
+                                <div className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-center">
+                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Total</div>
+                                    <div className="text-xl font-black text-gray-800">{requests.length}</div>
                                 </div>
                             </div>
-                            <div>
-                                <h4 className="font-bold text-slate-800">{req.staffName}</h4>
-                                <p className="text-xs text-slate-500 flex items-center gap-1 mt-1"><MapPin size={12}/> {req.destination}</p>
-                                {req.patientName && (
-                                    <div className="mt-2 flex gap-4 text-[10px] bg-blue-50 text-blue-700 px-3 py-2 rounded-xl">
-                                        <p className="flex items-center gap-1 font-bold"><User size={10}/> {req.patientName}</p>
-                                        <p className="flex items-center gap-1 font-bold"><Bed size={10}/> RM {req.roomNumber || 'N/A'}</p>
+                        )}
+
+                        {requests.length === 0 ? (
+                            <div className="text-center py-20 text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-300">No tickets found in the database.</div>
+                        ) : requests.map(r => (
+                            <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm mb-3 border-l-4 border-blue-500 hover:shadow-md transition">
+                                <div className="flex justify-between font-bold text-blue-900">
+                                    <span className="text-base">{r.staffName}</span>
+                                    <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                                        r.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                                        r.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
+                                        r.status === 'On Travel' ? 'bg-orange-100 text-orange-700 animate-pulse' :
+                                        'bg-yellow-100 text-yellow-700'
+                                    }`}>{r.status}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">{r.date} @ {r.time} • {r.department}</div>
+                                <div className="text-sm mt-2 text-gray-600 font-medium">{r.purpose}</div>
+                                
+                                {(r.driver || r.vehicle) && (
+                                    <div className="mt-2 py-1 px-2 bg-gray-50 rounded text-[10px] flex gap-4 text-gray-500 border border-gray-100">
+                                        <span><strong className="text-gray-700 uppercase">Driver:</strong> {r.driver}</span>
+                                        <span><strong className="text-gray-700 uppercase">Vehicle:</strong> {r.vehicle}</span>
                                     </div>
                                 )}
+
+                                {view === 'admin' && r.status === 'Pending' && (
+                                    <button onClick={async () => {
+                                        const dr = prompt("Driver Name:");
+                                        const vh = prompt("Vehicle (Plate/Model):");
+                                        if(dr && vh) {
+                                            const { db, fbActions } = window;
+                                            await fbActions.updateDoc(fbActions.doc(db, 'artifacts', appId, 'public', 'data', 'tickets', r.id), { 
+                                                status: 'Approved', driver: dr, vehicle: vh 
+                                            });
+                                            showToast("Ticket Approved");
+                                        }
+                                    }} className="mt-3 bg-blue-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest hover:bg-blue-700 shadow-sm transition">Approve & Assign</button>
+                                )}
+
+                                {view === 'security' && (r.status === 'Approved' || r.status === 'On Travel') && (
+                                    <button onClick={async () => {
+                                        const odo = prompt(`Enter ${r.status === 'Approved' ? 'Starting' : 'Ending'} Odometer:`);
+                                        const sec = prompt("Your Name (Security):");
+                                        if(odo && sec) {
+                                            const { db, fbActions } = window;
+                                            const isDep = r.status === 'Approved';
+                                            await fbActions.updateDoc(fbActions.doc(db, 'artifacts', appId, 'public', 'data', 'tickets', r.id), {
+                                                status: isDep ? 'On Travel' : 'Completed',
+                                                [isDep ? 'odoStart' : 'odoEnd']: odo,
+                                                securityName: sec,
+                                                completedAt: isDep ? null : new Date().toLocaleString()
+                                            });
+                                            showToast(isDep ? "Departure Logged" : "Travel Finished");
+                                        }
+                                    }} className="mt-3 bg-black text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest hover:bg-gray-800 shadow-sm transition">
+                                        Log {r.status === 'Approved' ? 'Departure' : 'Arrival'}
+                                    </button>
+                                )}
                             </div>
-                            {view === 'admin-dashboard' && activeTab === 'pending' && (
-                                <div className="pt-3 border-t grid gap-3">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input id={`v-${req.id}`} placeholder="Vehicle #" className="text-xs p-3 bg-slate-50 rounded-xl border focus:border-blue-500 outline-none" />
-                                        <input id={`d-${req.id}`} placeholder="Driver" className="text-xs p-3 bg-slate-50 rounded-xl border focus:border-blue-500 outline-none" />
-                                    </div>
-                                    <button onClick={() => handleAction('update', {
-                                        id: req.id, 
-                                        status: 'approved',
-                                        vehicleAssigned: document.getElementById(`v-${req.id}`).value,
-                                        driverName: document.getElementById(`d-${req.id}`).value
-                                    })} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl text-xs">Approve Ticket</button>
-                                </div>
-                            )}
-                            {view === 'security-post' && activeTab === 'approved' && (
-                                <div className="pt-3 border-t grid gap-3">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input id={`s-${req.id}`} type="number" placeholder="In ODO" className="text-xs p-3 bg-slate-50 rounded-xl border outline-none" />
-                                        <input id={`e-${req.id}`} type="number" placeholder="Out ODO" className="text-xs p-3 bg-slate-50 rounded-xl border outline-none" />
-                                    </div>
-                                    <button onClick={() => {
-                                        const s = document.getElementById(`s-${req.id}`).value;
-                                        const e = document.getElementById(`e-${req.id}`).value;
-                                        handleAction('update', {
-                                            id: req.id, 
-                                            status: 'completed',
-                                            startOdo: s,
-                                            endOdo: e,
-                                            distance: (e - s) || 0
-                                        });
-                                    }} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-xs">Close Trip</button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                        ))}
+                    </div>
+                    {message && <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-2 rounded-full z-50 font-bold text-xs shadow-2xl">{message}</div>}
                 </div>
-            </div>
-        )}
+            );
+        }
 
-        {view === 'track-request' && (
-            <div className="space-y-6 animate-in">
-                 <button onClick={() => setView('landing')} className="text-xs font-bold text-slate-400">← BACK</button>
-                 <h2 className="text-xl font-bold">Track Your Ticket</h2>
-                 <div className="flex gap-2">
-                    <input 
-                        placeholder="TP-XXXX" 
-                        value={searchId}
-                        onChange={(e) => setSearchId(e.target.value.toUpperCase())}
-                        className="flex-1 p-4 bg-white border rounded-2xl font-mono focus:border-blue-500 outline-none shadow-sm" 
-                    />
-                    <button 
-                        onClick={() => {
-                            const result = requests.find(r => r.id === searchId);
-                            setTrackResult(result || 'none');
-                        }}
-                        className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition-transform"
-                    >
-                        <Search size={24} />
-                    </button>
-                 </div>
-                 {trackResult === 'none' && <div className="text-center p-8 bg-orange-50 rounded-3xl text-orange-700 font-bold text-sm">Ticket not found</div>}
-                 {trackResult && trackResult !== 'none' && (
-                     <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-blue-50 space-y-4 animate-in">
-                        <div className="flex justify-between items-center">
-                            <span className="text-blue-600 font-mono font-bold text-lg">{trackResult.id}</span>
-                            {renderStatusBadge(trackResult.status)}
-                        </div>
-                        <h3 className="text-xl font-bold">{trackResult.staffName}</h3>
-                        <div className="space-y-3 text-sm text-slate-500">
-                            <p className="flex justify-between border-b pb-2"><span>Schedule:</span> <b className="text-slate-900">{trackResult.departureDate} @ {trackResult.departureTime}</b></p>
-                            {trackResult.patientName && <p className="flex justify-between border-b pb-2 text-blue-600"><span>Patient/Room:</span> <b>{trackResult.patientName} (RM {trackResult.roomNumber})</b></p>}
-                            <p className="flex justify-between border-b pb-2"><span>Vehicle:</span> <b className="text-slate-900">{trackResult.vehicleAssigned || trackResult.vehicle || 'Pending Assignment'}</b></p>
-                            <p className="flex justify-between border-b pb-2"><span>Driver:</span> <b className="text-slate-900">{trackResult.driverName || trackResult.driver || 'Pending Assignment'}</b></p>
-                            {trackResult.status === 'completed' && (
-                                <div className="bg-emerald-50 p-3 rounded-xl text-emerald-800 text-xs font-bold flex justify-between">
-                                    <span>Distance Traveled:</span>
-                                    <span>{trackResult.distance || 0} KM</span>
-                                </div>
-                            )}
-                        </div>
-                     </div>
-                 )}
-            </div>
-        )}
-
-        {view === 'success' && (
-            <div className="text-center py-20 animate-in">
-                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={40} /></div>
-                <h2 className="text-2xl font-bold mb-2">Request Sent</h2>
-                <p className="text-slate-400 text-sm mb-8 px-10">Your ID: <b className="text-blue-600">{trackResult?.id}</b>. Save this to track status.</p>
-                <button onClick={() => setView('landing')} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-sm">Return Home</button>
-            </div>
-        )}
-      </main>
-
-      {showAuthModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
-              <div className="bg-white w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl relative animate-in">
-                  <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-slate-300 hover:text-slate-500 transition-colors"><X size={24}/></button>
-                  <div className="p-3 bg-slate-100 rounded-2xl w-fit mb-4"><Lock size={20} /></div>
-                  <h3 className="text-xl font-bold mb-6">Staff Access</h3>
-                  <form onSubmit={handleLogin} className="space-y-4">
-                      <input 
-                        autoFocus type="password" placeholder="Passcode" 
-                        className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center font-bold focus:border-blue-500 outline-none" 
-                        value={password} onChange={(e) => setPassword(e.target.value)}
-                      />
-                      {authError && <p className="text-center text-xs font-bold text-red-500">{authError}</p>}
-                      <button className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition-colors">Login</button>
-                  </form>
-              </div>
-          </div>
-      )}
-    </div>
-  );
-};
-
-const RoleCard = ({ icon, title, desc, onClick, isLocked }) => (
-    <button onClick={onClick} className="w-full p-5 bg-white rounded-3xl border shadow-sm flex items-center justify-between group active:scale-[0.98] transition-all">
-        <div className="flex items-center gap-4 text-left">
-            <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-blue-50 transition-colors">{icon}</div>
-            <div>
-                <h3 className="font-bold flex items-center gap-1.5">{title} {isLocked && <Lock size={12} className="text-slate-300" />}</h3>
-                <p className="text-[11px] font-medium text-slate-400">{desc}</p>
-            </div>
-        </div>
-        <ChevronRight size={18} className="text-slate-200 group-hover:text-blue-400 transition-colors" />
-    </button>
-);
-
-const Input = ({ label, value, onChange, type = "text", ...props }) => (
-    <div className="space-y-1">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</label>
-        <input 
-            type={type} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-xl outline-none text-sm transition-all" 
-            value={value} onChange={(e) => onChange(e.target.value)} {...props} 
-        />
-    </div>
-);
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+        
+        setInterval(() => { if(window.lucide) window.lucide.createIcons(); }, 1000);
+    </script>
+</body>
+</html>
