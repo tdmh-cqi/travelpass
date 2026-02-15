@@ -80,89 +80,81 @@
 </div>
 
 <script>
+    // Ensure this URL is from your LATEST "New Deployment" (set to "Anyone")
     const scriptURL = 'https://script.google.com/macros/s/AKfycbzGaJ2MzbJ-h3WMXVjap7vZUwhud8yYPkuuJQjYrwKODMwIjMJkkuHwQrd4B80dMPLt/exec';
 
-    window.onload = loadRecentPending;
+    window.onload = loadRecent;
 
-    // SUBMIT FORM
+    // 1. SUBMIT REQUEST (POST)
     document.getElementById('travelForm').addEventListener('submit', e => {
         e.preventDefault();
         const btn = document.getElementById('subBtn');
         btn.disabled = true; btn.innerText = "Submitting...";
         
+        // mode: 'no-cors' is only okay for sending data without needing a response
         fetch(scriptURL, { method: 'POST', body: new FormData(e.target), mode: 'no-cors' })
         .then(() => {
             alert("Request Sent Successfully!");
             e.target.reset();
-            document.getElementById('patFields').style.display = 'none';
             btn.disabled = false; btn.innerText = "Submit Request";
-            loadRecentPending();
+            loadRecent();
         })
-        .catch(() => {
-            alert("Error in submission.");
+        .catch(err => {
+            console.error(err);
+            alert("Error in submission. Check console.");
             btn.disabled = false; btn.innerText = "Submit Request";
         });
     });
 
-    // LOAD 10 RECENT PENDING REQUESTS
-    async function loadRecentPending() {
+    // 2. LOAD RECENT 10 PENDING (GET)
+    async function loadRecent() {
         const list = document.getElementById('recentList');
-        const recentTitle = document.querySelector('#recentSection p');
-        recentTitle.innerText = "Recent 10 Pending Requests";
-        
         list.innerHTML = `<div class="text-center py-2"><small class="text-muted">Syncing...</small></div>`;
         
         try {
-            // Updated to request specifically pending items
-            const res = await fetch(`${scriptURL}?action=recent&status=Pending&limit=10`);
+            // Note: No 'mode: no-cors' here. We NEED to read the data.
+            const res = await fetch(`${scriptURL}?action=recent`);
             const data = await res.json();
-            
             list.innerHTML = "";
-            if (data.length === 0) {
-                list.innerHTML = `<small class="text-muted">No pending requests found.</small>`;
-                return;
-            }
-
+            
             data.forEach(item => {
                 list.innerHTML += `
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent border-bottom">
                         <div style="max-width: 75%;">
                             <div class="fw-bold" style="font-size:0.85rem">${item.name}</div>
-                            <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time || item.datetime}</div>
+                            <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time}</div>
                         </div>
-                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.6rem;">Pending</span>
+                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.6rem;">${item.status}</span>
                     </div>`;
             });
         } catch (e) { 
-            list.innerHTML = `<small class="text-danger">Failed to load recent activity.</small>`; 
+            console.error(e);
+            list.innerHTML = `<small class="text-danger">Sync Error. Ensure Script is deployed to 'Anyone'.</small>`; 
         }
     }
 
-    // SEARCH & VIEW ALL DETAILS
+    // 3. SEARCH RECORDS (GET)
     async function checkStatus() {
         const name = document.getElementById('searchName').value.trim();
         const resDiv = document.getElementById('statusResult');
         if(!name) return;
 
-        resDiv.innerHTML = `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div> Fetching Full Details...</div>`;
+        resDiv.innerHTML = `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div> Searching Database...</div>`;
 
         try {
+            // Fetching search results from the name parameter
             const response = await fetch(`${scriptURL}?name=${encodeURIComponent(name)}`);
             const data = await response.json();
 
-            if (data.status === "No Record Found" || (Array.isArray(data) && data.length === 0)) {
-                resDiv.innerHTML = `<div class="alert alert-warning py-2 small text-center">No records found for "${name}".</div>`;
+            if (data.status === "No Record Found") {
+                resDiv.innerHTML = `<div class="alert alert-warning py-2 small text-center">No record found for "${name}".</div>`;
             } else {
                 resDiv.innerHTML = "";
                 const results = Array.isArray(data) ? data : [data];
 
                 results.forEach(item => {
-                    let sClass = "bg-pending";
-                    let bClass = "bg-warning text-dark";
-                    
-                    const status = item.status ? item.status.toLowerCase() : "pending";
-                    if (status === "approved") { sClass = "bg-approved"; bClass = "bg-success text-white"; }
-                    if (status === "denied") { sClass = "bg-denied"; bClass = "bg-danger text-white"; }
+                    let sClass = item.status === "Approved" ? "bg-approved" : (item.status === "Denied" ? "bg-denied" : "bg-pending");
+                    let bClass = item.status === "Approved" ? "bg-success" : (item.status === "Denied" ? "bg-danger" : "bg-warning text-dark");
 
                     resDiv.innerHTML += `
                         <div class="card p-3 status-card ${sClass} bg-white shadow-sm mt-2">
@@ -174,27 +166,24 @@
                                 <span class="badge ${bClass}" style="font-size:0.65rem">${item.status}</span>
                             </div>
                             <hr class="my-2">
-                            <div class="small mb-2">
+                            <div class="small mb-1">
                                 <strong>Purpose:</strong> ${item.purpose || 'N/A'}<br>
-                                <strong>Driver:</strong> ${item.driver || 'TBA'} | <strong>Vehicle:</strong> ${item.vehicle || 'TBA'}
+                                <strong>Driver:</strong> ${item.driver} | <strong>Vehicle:</strong> ${item.vehicle}
                             </div>
-                            ${item.patientName ? `
-                                <div class="p-2 mb-2 rounded bg-light border small" style="font-size:0.7rem">
-                                    <strong>Patient:</strong> ${item.patientName} | <strong>Room:</strong> ${item.roomNumber}
-                                </div>` : ''}
-                            ${item.status === "Denied" ? `<div class="deny-box mt-1"><strong>Reason:</strong> ${item.reason || 'No reason provided.'}</div>` : ""}
-                            ${item.endorsement ? `<div class="text-muted mt-1 small" style="font-size:0.65rem italic">"${item.endorsement}"</div>` : ""}
-                            <div class="text-primary fw-bold mt-2" style="font-size: 0.75rem;">Scheduled: ${item.datetime || item.time}</div>
+                            ${item.status === "Denied" ? `<div class="deny-box mt-1"><strong>Reason:</strong> ${item.reason}</div>` : ""}
+                            <div class="text-primary fw-bold mt-2" style="font-size: 0.75rem;">Scheduled: ${item.datetime}</div>
                         </div>`;
                 });
             }
         } catch (err) {
-            resDiv.innerHTML = `<div class="alert alert-danger py-2 small">Error connecting to server.</div>`;
+            console.error(err);
+            resDiv.innerHTML = `<div class="alert alert-danger py-2 small">Connection lost. Check deployment settings.</div>`;
         }
     }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
 
 
