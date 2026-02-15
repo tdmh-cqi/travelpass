@@ -13,6 +13,7 @@
         .bg-denied { border-left-color: #dc3545 !important; }
         .bg-pending { border-left-color: #ffc107 !important; }
         .nav-pills .nav-link.active { background-color: #007bff; }
+        .deny-box { background-color: #fff5f5; border: 1px solid #feb2b2; color: #c53030; border-radius: 8px; padding: 8px; margin-top: 10px; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -68,11 +69,10 @@
                 
                 <div id="recentSection">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <p class="fw-bold mb-0 text-muted small">Recent Activity</p>
+                        <p class="fw-bold mb-0 text-muted small">Recent Activity (Last 5)</p>
                         <button class="btn btn-sm btn-outline-secondary py-0" style="font-size: 0.7rem;" onclick="loadRecent()">Refresh</button>
                     </div>
-                    <div id="recentList" class="list-group list-group-flush">
-                        </div>
+                    <div id="recentList" class="list-group list-group-flush"></div>
                 </div>
             </div>
         </div>
@@ -82,7 +82,6 @@
 <script>
     const scriptURL = 'https://script.google.com/macros/s/AKfycbzGaJ2MzbJ-h3WMXVjap7vZUwhud8yYPkuuJQjYrwKODMwIjMJkkuHwQrd4B80dMPLt/exec';
 
-    // LOAD RECENT ON START
     window.onload = loadRecent;
 
     // FORM SUBMISSION
@@ -95,7 +94,8 @@
             alert("Request Sent Successfully!");
             e.target.reset();
             btn.disabled = false; btn.innerText = "Submit Request";
-            loadRecent(); // Refresh list after submitting
+            document.getElementById('patFields').style.display = 'none';
+            loadRecent();
         })
         .catch(() => {
             alert("Error in submission.");
@@ -103,25 +103,28 @@
         });
     });
 
-    // LOAD RECENT LIST
+    // LOAD RECENT LIST (Updated to 5 items)
     async function loadRecent() {
         const list = document.getElementById('recentList');
         list.innerHTML = `<div class="text-center py-2"><small class="text-muted">Updating list...</small></div>`;
         try {
+            // Updated App Script action 'recent' should handle slicing to 5
             const res = await fetch(`${scriptURL}?action=recent`);
             const data = await res.json();
             list.innerHTML = "";
-            data.forEach(item => {
-                let badge = item.status === "Pending" ? "bg-warning text-dark" : "bg-success";
-                if(item.status === "Denied") badge = "bg-danger";
+            
+            // Limit to 5 items here just in case the backend returns more
+            data.slice(0, 5).forEach(item => {
+                let badge = item.status === "Pending" ? "bg-warning text-dark" : "bg-success text-white";
+                if(item.status === "Denied") badge = "bg-danger text-white";
 
                 list.innerHTML += `
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent border-bottom">
                         <div style="max-width: 70%;">
                             <div class="fw-bold small">${item.name}</div>
                             <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time}</div>
                         </div>
-                        <span class="badge ${badge} rounded-pill" style="font-size: 0.6rem;">${item.status}</span>
+                        <span class="badge ${badge} rounded-pill" style="font-size: 0.6rem; padding: 5px 8px;">${item.status}</span>
                     </div>`;
             });
         } catch (e) {
@@ -129,7 +132,7 @@
         }
     }
 
-    // SEARCH STATUS
+    // SEARCH STATUS (Added Deny Reason Logic)
     async function checkStatus() {
         const name = document.getElementById('searchName').value.trim();
         const resDiv = document.getElementById('statusResult');
@@ -147,8 +150,9 @@
                 let statusClass = "bg-pending";
                 let badgeClass = "bg-warning text-dark";
                 
-                if (data.status.toLowerCase() === "approved") { statusClass = "bg-approved"; badgeClass = "bg-success text-white"; }
-                if (data.status.toLowerCase() === "denied") { statusClass = "bg-denied"; badgeClass = "bg-danger text-white"; }
+                const statusLower = data.status.toLowerCase();
+                if (statusLower === "approved") { statusClass = "bg-approved"; badgeClass = "bg-success text-white"; }
+                if (statusLower === "denied") { statusClass = "bg-denied"; badgeClass = "bg-danger text-white"; }
 
                 resDiv.innerHTML = `
                     <div class="card p-3 status-card ${statusClass} bg-white shadow-sm mt-2">
@@ -160,10 +164,14 @@
                             <span class="badge ${badgeClass}">${data.status}</span>
                         </div>
                         <hr class="my-2">
-                        <p class="mb-1" style="font-size: 0.8rem;"><strong>Purpose:</strong> ${data.purpose}</p>
+                        <div class="small"><strong>Driver:</strong> ${data.driver || "TBA"}</div>
+                        <div class="small"><strong>Vehicle:</strong> ${data.vehicle || "TBA"}</div>
+                        <p class="mb-1 mt-1" style="font-size: 0.8rem;"><strong>Purpose:</strong> ${data.purpose}</p>
                         <p class="mb-0 text-primary fw-bold" style="font-size: 0.8rem;">Scheduled: ${data.datetime}</p>
+                        
+                        ${data.status === "Denied" && data.reason ? 
+                          `<div class="deny-box"><strong>Reason for Denial:</strong> ${data.reason}</div>` : ''}
                     </div>`;
-                loadRecent(); // Sync the list with current search
             }
         } catch (err) {
             resDiv.innerHTML = `<div class="alert alert-danger py-2 small">Error connecting to database.</div>`;
