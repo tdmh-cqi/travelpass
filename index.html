@@ -3,155 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Portal | TDMH Travel Pass</title>
+    <title>Travel Pass Portal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
-        .login-card { max-width: 400px; margin: 100px auto; border: none; border-radius: 15px; background: #1e1e1e; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .admin-card { background: #1e1e1e; border: none; border-radius: 12px; margin-bottom: 20px; color: #fff; transition: transform 0.2s; border-left: 5px solid #0d6efd; }
-        .admin-card:hover { transform: scale(1.01); }
-        .btn-approve { background: #198754; border: none; }
-        .btn-deny { background: #dc3545; border: none; }
-        #adminPanel { display: none; }
-        .badge-pending { background: #ffc107; color: #000; }
-        .section-header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        body { background-color: #f4f7f6; font-family: sans-serif; }
+        .card { border-radius: 15px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .status-card { border-left: 5px solid #007bff; }
+        .bg-approved { border-left-color: #28a745 !important; }
+        .bg-denied { border-left-color: #dc3545 !important; }
+        .bg-pending { border-left-color: #ffc107 !important; }
+        .nav-pills .nav-link.active { background-color: #007bff; }
     </style>
 </head>
 <body>
 
-<div class="container py-4">
-    <div id="loginSection" class="card login-card p-4 text-center">
-        <div class="mb-3"><i class="bi bi-shield-lock-fill text-primary" style="font-size: 3rem;"></i></div>
-        <h4 class="fw-bold">Admin Login</h4>
-        <p class="text-muted small">TDMH General Hospital Travel System</p>
-        <div class="mt-3">
-            <input type="password" id="passInput" class="form-control bg-dark text-white border-secondary mb-3" placeholder="Enter Admin Password">
-            <button class="btn btn-primary w-100 fw-bold" onclick="checkPass()">LOGIN</button>
-        </div>
+<div class="container py-4" style="max-width: 500px;">
+    <div class="text-center mb-4">
+        <h3 class="fw-bold text-primary">🎫 Travel Pass Portal</h3>
     </div>
 
-    <div id="adminPanel">
-        <div class="section-header d-flex justify-content-between align-items-center">
-            <div>
-                <h2 class="fw-bold text-white mb-0">Management Console</h2>
-                <small class="text-info" id="countDisplay">Scanning for requests...</small>
+    <ul class="nav nav-pills nav-fill mb-4 bg-white p-1 rounded shadow-sm">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#req">Request</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#track">Track Status</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="req">
+            <div class="card p-4">
+                <form id="travelForm">
+                    <div class="mb-3"><label class="fw-bold">Full Name</label><input type="text" name="name" class="form-control" required></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="fw-bold">Dept</label><input type="text" name="dept" class="form-control" required></div>
+                        <div class="col-6 mb-3"><label class="fw-bold">Time</label><input type="datetime-local" name="datetime" class="form-control" required></div>
+                    </div>
+                    <div class="mb-3"><label class="fw-bold">Purpose</label><input type="text" name="purpose" class="form-control" required></div>
+                    
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="patCheck" onchange="document.getElementById('patFields').style.display = this.checked ? 'block' : 'none'">
+                        <label class="form-check-label">With Patient?</label>
+                    </div>
+
+                    <div id="patFields" style="display:none;" class="p-3 border rounded mb-3 bg-light">
+                        <input type="text" name="patientName" class="form-control mb-2" placeholder="Patient Name">
+                        <input type="text" name="roomNumber" class="form-control" placeholder="Room Number">
+                    </div>
+                    
+                    <div class="mb-3"><label class="text-muted small">Special Endorsement</label><input type="text" name="endorsement" class="form-control"></div>
+                    <button type="submit" id="subBtn" class="btn btn-primary w-100 fw-bold">Submit Request</button>
+                </form>
             </div>
-            <button class="btn btn-outline-info btn-sm" onclick="fetchPending()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
         </div>
 
-        <div id="pendingList" class="mt-4">
+        <div class="tab-pane fade" id="track">
+            <div class="card p-4">
+                <label class="fw-bold mb-2">Check Your Status</label>
+                <div class="input-group mb-3 shadow-sm">
+                    <input type="text" id="searchName" class="form-control" placeholder="Name or Dept">
+                    <button class="btn btn-primary" onclick="checkStatus()">Search</button>
+                </div>
+                
+                <div id="statusResult"></div>
+                
+                <hr class="my-4">
+                
+                <div id="recentSection">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <p class="fw-bold mb-0 text-muted small">Recent Activity</p>
+                        <button class="btn btn-sm btn-outline-secondary py-0" style="font-size: 0.7rem;" onclick="loadRecent()">Refresh</button>
+                    </div>
+                    <div id="recentList" class="list-group list-group-flush">
+                        </div>
+                </div>
             </div>
+        </div>
     </div>
 </div>
 
 <script>
     const scriptURL = 'https://script.google.com/macros/s/AKfycbzGaJ2MzbJ-h3WMXVjap7vZUwhud8yYPkuuJQjYrwKODMwIjMJkkuHwQrd4B80dMPLt/exec';
-    const ADMIN_PASS = 'bestgeneralhospital1211';
 
-    function checkPass() {
-        const input = document.getElementById('passInput').value;
-        if(input === ADMIN_PASS) {
-            document.getElementById('loginSection').style.display = 'none';
-            document.getElementById('adminPanel').style.display = 'block';
-            fetchPending();
-        } else {
-            alert("Incorrect Password!");
-        }
-    }
+    // LOAD RECENT ON START
+    window.onload = loadRecent;
 
-    async function fetchPending() {
-        const list = document.getElementById('pendingList');
-        const countDisplay = document.getElementById('countDisplay');
-        list.innerHTML = `<div class="text-center mt-5"><div class="spinner-border text-info"></div><p class="mt-2">Loading requests...</p></div>`;
-        
+    // FORM SUBMISSION
+    document.getElementById('travelForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const btn = document.getElementById('subBtn');
+        btn.disabled = true; btn.innerText = "Submitting...";
+        fetch(scriptURL, { method: 'POST', body: new FormData(e.target), mode: 'no-cors' })
+        .then(() => {
+            alert("Request Sent Successfully!");
+            e.target.reset();
+            btn.disabled = false; btn.innerText = "Submit Request";
+            loadRecent(); // Refresh list after submitting
+        })
+        .catch(() => {
+            alert("Error in submission.");
+            btn.disabled = false; btn.innerText = "Submit Request";
+        });
+    });
+
+    // LOAD RECENT LIST
+    async function loadRecent() {
+        const list = document.getElementById('recentList');
+        list.innerHTML = `<div class="text-center py-2"><small class="text-muted">Updating list...</small></div>`;
         try {
-            const res = await fetch(`${scriptURL}?action=getPending`);
+            const res = await fetch(`${scriptURL}?action=recent`);
             const data = await res.json();
-            
-            if (!data || data.length === 0) {
-                list.innerHTML = `<div class="text-center mt-5 text-muted"><i class="bi bi-check2-circle" style="font-size: 3rem;"></i><p>No pending requests at the moment.</p></div>`;
-                countDisplay.innerText = "0 Pending Requests";
-                return;
-            }
-
-            countDisplay.innerText = `${data.length} Pending Requests`;
             list.innerHTML = "";
+            data.forEach(item => {
+                let badge = item.status === "Pending" ? "bg-warning text-dark" : "bg-success";
+                if(item.status === "Denied") badge = "bg-danger";
 
-            data.forEach(req => {
                 list.innerHTML += `
-                    <div class="card admin-card p-4 shadow-lg">
-                        <div class="d-flex justify-content-between">
-                            <h5 class="fw-bold text-info mb-0">${req.name}</h5>
-                            <span class="badge badge-pending">PENDING</span>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                        <div style="max-width: 70%;">
+                            <div class="fw-bold small">${item.name}</div>
+                            <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time}</div>
                         </div>
-                        <div class="text-muted small mb-3">${req.dept} Department | Requested: ${req.time}</div>
-                        <p class="bg-dark p-2 rounded small"><strong class="text-white-50">Purpose:</strong> ${req.purpose}</p>
-                        
-                        <div class="row g-3">
-                            <div class="col-md-7 border-end border-secondary pe-md-4">
-                                <label class="small fw-bold text-success mb-2"><i class="bi bi-check-circle"></i> APPROVE & ASSIGN</label>
-                                <div class="row g-2">
-                                    <div class="col-6"><input type="text" id="dr_${req.name}" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="Assign Driver"></div>
-                                    <div class="col-6"><input type="text" id="vh_${req.name}" class="form-control form-control-sm bg-dark text-white border-secondary" placeholder="Assign Vehicle"></div>
-                                </div>
-                                <button class="btn btn-approve btn-sm w-100 mt-2 fw-bold text-white" onclick="process('${req.name}', 'Approved')">APPROVE PASS</button>
-                            </div>
-
-                            <div class="col-md-5 ps-md-4">
-                                <label class="small fw-bold text-danger mb-2"><i class="bi bi-x-circle"></i> DENY REQUEST</label>
-                                <input type="text" id="re_${req.name}" class="form-control form-control-sm bg-dark text-white border-secondary mb-2" placeholder="Reason for denial">
-                                <button class="btn btn-deny btn-sm w-100 fw-bold text-white" onclick="process('${req.name}', 'Denied')">DENY PASS</button>
-                            </div>
-                        </div>
+                        <span class="badge ${badge} rounded-pill" style="font-size: 0.6rem;">${item.status}</span>
                     </div>`;
             });
         } catch (e) {
-            list.innerHTML = `<div class="alert alert-danger">Error fetching data. Ensure script is deployed as 'Anyone'.</div>`;
+            list.innerHTML = `<small class="text-danger">Could not load recent activity.</small>`;
         }
     }
 
-    function process(name, status) {
-        let params = { action: 'updateRequest', name: name, status: status };
-        
-        if (status === 'Approved') {
-            params.driver = document.getElementById(`dr_${name}`).value;
-            params.vehicle = document.getElementById(`vh_${name}`).value;
-            if(!params.driver || !params.vehicle) {
-                alert("Please assign a Driver and Vehicle.");
-                return;
+    // SEARCH STATUS
+    async function checkStatus() {
+        const name = document.getElementById('searchName').value.trim();
+        const resDiv = document.getElementById('statusResult');
+        if(!name) return;
+
+        resDiv.innerHTML = `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div> Searching...</div>`;
+
+        try {
+            const response = await fetch(`${scriptURL}?name=${encodeURIComponent(name)}`);
+            const data = await response.json();
+
+            if (data.status === "No Record Found") {
+                resDiv.innerHTML = `<div class="alert alert-warning py-2 small text-center">No record found.</div>`;
+            } else {
+                let statusClass = "bg-pending";
+                let badgeClass = "bg-warning text-dark";
+                
+                if (data.status.toLowerCase() === "approved") { statusClass = "bg-approved"; badgeClass = "bg-success text-white"; }
+                if (data.status.toLowerCase() === "denied") { statusClass = "bg-denied"; badgeClass = "bg-danger text-white"; }
+
+                resDiv.innerHTML = `
+                    <div class="card p-3 status-card ${statusClass} bg-white shadow-sm mt-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="fw-bold mb-0">${data.name}</h6>
+                                <small class="text-muted">${data.dept} Dept</small>
+                            </div>
+                            <span class="badge ${badgeClass}">${data.status}</span>
+                        </div>
+                        <hr class="my-2">
+                        <p class="mb-1" style="font-size: 0.8rem;"><strong>Purpose:</strong> ${data.purpose}</p>
+                        <p class="mb-0 text-primary fw-bold" style="font-size: 0.8rem;">Scheduled: ${data.datetime}</p>
+                    </div>`;
+                loadRecent(); // Sync the list with current search
             }
-        } else {
-            params.reason = document.getElementById(`re_${name}`).value;
-            if(!params.reason) {
-                alert("Please provide a reason for denial.");
-                return;
-            }
+        } catch (err) {
+            resDiv.innerHTML = `<div class="alert alert-danger py-2 small">Error connecting to database.</div>`;
         }
-
-        if(!confirm(`Are you sure you want to ${status} this request?`)) return;
-
-        // Visual feedback
-        const btn = event.target;
-        btn.disabled = true;
-        btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Processing...`;
-
-        fetch(scriptURL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: new URLSearchParams(params) 
-        })
-        .then(() => { 
-            alert(`Request for ${name} has been ${status}.`); 
-            fetchPending(); 
-        })
-        .catch(err => {
-            alert("Connection error. Check Google Sheet.");
-            btn.disabled = false;
-        });
     }
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
