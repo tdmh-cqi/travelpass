@@ -80,81 +80,96 @@
 </div>
 
 <script>
-    // Ensure this URL is from your LATEST "New Deployment" (set to "Anyone")
     const scriptURL = 'https://script.google.com/macros/s/AKfycbzGaJ2MzbJ-h3WMXVjap7vZUwhud8yYPkuuJQjYrwKODMwIjMJkkuHwQrd4B80dMPLt/exec';
 
+    // Initial load
     window.onload = loadRecent;
 
-    // 1. SUBMIT REQUEST (POST)
+    // 1. SUBMIT FORM (POST)
     document.getElementById('travelForm').addEventListener('submit', e => {
         e.preventDefault();
         const btn = document.getElementById('subBtn');
         btn.disabled = true; btn.innerText = "Submitting...";
         
-        // mode: 'no-cors' is only okay for sending data without needing a response
+        // We use no-cors for submission because we don't need to read the 'Success' text to know it worked
         fetch(scriptURL, { method: 'POST', body: new FormData(e.target), mode: 'no-cors' })
         .then(() => {
             alert("Request Sent Successfully!");
             e.target.reset();
+            document.getElementById('patFields').style.display = 'none';
             btn.disabled = false; btn.innerText = "Submit Request";
-            loadRecent();
+            loadRecent(); // Refresh the list
         })
         .catch(err => {
             console.error(err);
-            alert("Error in submission. Check console.");
+            alert("Error in submission. Please check your internet.");
             btn.disabled = false; btn.innerText = "Submit Request";
         });
     });
 
-    // 2. LOAD RECENT 10 PENDING (GET)
+    // 2. LOAD 10 RECENT PENDING REQUESTS (GET)
     async function loadRecent() {
         const list = document.getElementById('recentList');
+        const title = document.querySelector('#recentSection p');
+        title.innerText = "10 Recent Pending Requests";
         list.innerHTML = `<div class="text-center py-2"><small class="text-muted">Syncing...</small></div>`;
         
         try {
-            // Note: No 'mode: no-cors' here. We NEED to read the data.
-            const res = await fetch(`${scriptURL}?action=recent`);
+            // Updated to specifically request 10 recent pending items
+            const res = await fetch(`${scriptURL}?action=recent&limit=10`);
             const data = await res.json();
             list.innerHTML = "";
             
+            if (data.length === 0) {
+                list.innerHTML = `<small class="text-muted text-center d-block">No pending requests.</small>`;
+                return;
+            }
+
             data.forEach(item => {
                 list.innerHTML += `
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent border-bottom">
                         <div style="max-width: 75%;">
                             <div class="fw-bold" style="font-size:0.85rem">${item.name}</div>
-                            <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time}</div>
+                            <div class="text-muted" style="font-size: 0.65rem;">${item.dept} | ${item.time || item.datetime}</div>
                         </div>
-                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.6rem;">${item.status}</span>
+                        <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.6rem;">Pending</span>
                     </div>`;
             });
         } catch (e) { 
-            console.error(e);
-            list.innerHTML = `<small class="text-danger">Sync Error. Ensure Script is deployed to 'Anyone'.</small>`; 
+            console.error("Load Error:", e);
+            list.innerHTML = `<small class="text-danger">Sync Error. Visit script URL to authorize.</small>`; 
         }
     }
 
-    // 3. SEARCH RECORDS (GET)
+    // 3. SEARCH ALL DETAILS (GET)
     async function checkStatus() {
-        const name = document.getElementById('searchName').value.trim();
+        const query = document.getElementById('searchName').value.trim();
         const resDiv = document.getElementById('statusResult');
-        if(!name) return;
+        if(!query) return;
 
-        resDiv.innerHTML = `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div> Searching Database...</div>`;
+        resDiv.innerHTML = `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div> Fetching Details...</div>`;
 
         try {
-            // Fetching search results from the name parameter
-            const response = await fetch(`${scriptURL}?name=${encodeURIComponent(name)}`);
+            // Using 'redirect: follow' to handle Google's internal redirection
+            const response = await fetch(`${scriptURL}?name=${encodeURIComponent(query)}`, {
+                method: 'GET',
+                redirect: 'follow'
+            });
             const data = await response.json();
 
-            if (data.status === "No Record Found") {
-                resDiv.innerHTML = `<div class="alert alert-warning py-2 small text-center">No record found for "${name}".</div>`;
+            if (data.status === "No Record Found" || (Array.isArray(data) && data.length === 0)) {
+                resDiv.innerHTML = `<div class="alert alert-warning py-2 small text-center">No record found for "${query}".</div>`;
             } else {
                 resDiv.innerHTML = "";
                 const results = Array.isArray(data) ? data : [data];
 
                 results.forEach(item => {
-                    let sClass = item.status === "Approved" ? "bg-approved" : (item.status === "Denied" ? "bg-denied" : "bg-pending");
-                    let bClass = item.status === "Approved" ? "bg-success" : (item.status === "Denied" ? "bg-danger" : "bg-warning text-dark");
+                    let sClass = "bg-pending";
+                    let bClass = "bg-warning text-dark";
+                    const status = (item.status || "Pending").toLowerCase();
+
+                    if (status === "approved") { sClass = "bg-approved"; bClass = "bg-success text-white"; }
+                    if (status === "denied") { sClass = "bg-denied"; bClass = "bg-danger text-white"; }
 
                     resDiv.innerHTML += `
                         <div class="card p-3 status-card ${sClass} bg-white shadow-sm mt-2">
@@ -168,22 +183,28 @@
                             <hr class="my-2">
                             <div class="small mb-1">
                                 <strong>Purpose:</strong> ${item.purpose || 'N/A'}<br>
-                                <strong>Driver:</strong> ${item.driver} | <strong>Vehicle:</strong> ${item.vehicle}
+                                <strong>Driver:</strong> ${item.driver || 'TBA'} | <strong>Vehicle:</strong> ${item.vehicle || 'TBA'}
                             </div>
-                            ${item.status === "Denied" ? `<div class="deny-box mt-1"><strong>Reason:</strong> ${item.reason}</div>` : ""}
-                            <div class="text-primary fw-bold mt-2" style="font-size: 0.75rem;">Scheduled: ${item.datetime}</div>
+                            ${item.patientName && item.patientName !== "N/A" ? `
+                                <div class="bg-light p-2 rounded border mb-1" style="font-size: 0.7rem;">
+                                    <strong>Patient:</strong> ${item.patientName} | <strong>Room:</strong> ${item.roomNumber}
+                                </div>` : ''}
+                            ${status === "denied" ? `<div class="deny-box mt-1"><strong>Reason:</strong> ${item.reason || 'None provided'}</div>` : ""}
+                            ${item.endorsement && item.endorsement !== "None" ? `<div class="text-muted mt-1" style="font-size:0.65rem italic">"${item.endorsement}"</div>` : ""}
+                            <div class="text-primary fw-bold mt-2" style="font-size: 0.75rem;">Scheduled: ${item.datetime || item.time}</div>
                         </div>`;
                 });
             }
         } catch (err) {
-            console.error(err);
-            resDiv.innerHTML = `<div class="alert alert-danger py-2 small">Connection lost. Check deployment settings.</div>`;
+            console.error("Search Error:", err);
+            resDiv.innerHTML = `<div class="alert alert-danger py-2 small text-center">Connection Error. Open script URL in a new tab once.</div>`;
         }
     }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
 
 
 
